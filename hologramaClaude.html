@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProyectoAlis — Proyector de Hologramas</title>
+<style>
+/* ════════════════════════════════════════════════════════
+   VARIABLES
+════════════════════════════════════════════════════════ */
+:root {
+  --bg: #000;
+  --panel: #060608;
+  --border: #181820;
+  --accent: #a50d0d;
+  --accent2: #ff006e;
+  --accent3: #7b2fff;
+  --text: #b0b8c8;
+  --text-dim: #38384a;
+  --ctrl-h: 96px;
+  --ctrl-w: 230px;
+  --radius: 3px;
+  --glow:  0 0 18px rgba(230, 245, 19, 0.25);
+  --glow2: 0 0 18px rgba(255,0,110,.25);
+}
+
+/* ════════════════════════════════════════════════════════
+   RESET
+════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+}
+
+/* ── Ambient glow background ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(0,255,231,.04) 0%, transparent 70%);
+  animation: ambientPulse 6s ease-in-out infinite;
+  pointer-events: none; z-index: 0;
+}
+@keyframes ambientPulse {
+  0%,100% { opacity:.5; transform:scale(1); }
+  50%     { opacity:1;  transform:scale(1.08); }
+}
+
+/* ════════════════════════════════════════════════════════
+   LAYOUT
+════════════════════════════════════════════════════════ */
+#app {
+  display: flex;
+  width: 100vw; height: 100vh;
+  position: relative; z-index: 1;
+}
+
+/* ════════════════════════════════════════════════════════
+   SIDEBAR
+════════════════════════════════════════════════════════ */
+#sidebar {
+  width: var(--ctrl-w);
+  min-width: var(--ctrl-w);
+  height: 100%;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 10;
+  animation: slideInLeft .5s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes slideInLeft {
+  from { transform:translateX(-100%); opacity:0; }
+  to   { transform:translateX(0);     opacity:1; }
+}
+#sidebar::-webkit-scrollbar { width:3px; }
+#sidebar::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+.sidebar-header {
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  position: relative; overflow: hidden;
+}
+/* Animated accent line */
+.sidebar-header::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent3), transparent);
+  background-size: 200% 100%;
+  animation: shimmerLine 3s linear infinite;
+}
+@keyframes shimmerLine {
+  0%   { background-position:-200% 0; }
+  100% { background-position: 200% 0; }
+}
+.sidebar-header h1 {
+  font-size:14px; letter-spacing:.25em;
+  color:var(--accent); text-transform:uppercase;
+  text-shadow:0 0 12px rgba(0,255,231,.5);
+}
+.sidebar-header p {
+  font-size:9px; color:var(--text-dim);
+  margin-top:3px; letter-spacing:.08em;
+}
+
+.section-title {
+  font-size:8px; letter-spacing:.3em;
+  color:var(--text-dim); text-transform:uppercase;
+  padding:14px 16px 7px;
+  display:flex; align-items:center; gap:8px;
+}
+.section-title::after {
+  content:''; flex:1; height:1px; background:var(--border);
+}
+
+/* ── Thumbnails ── */
+.thumb-grid {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:7px; padding:0 12px 10px;
+}
+.thumb-btn {
+  aspect-ratio:1;
+  border:1px solid var(--border);
+  background:#0a0a0f;
+  cursor:pointer; position:relative;
+  overflow:hidden; border-radius:var(--radius);
+  transition:border-color .2s, transform .18s, box-shadow .2s;
+}
+.thumb-btn::after {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(135deg, rgba(0,255,231,.08) 0%, transparent 60%);
+  opacity:0; transition:opacity .2s;
+}
+.thumb-btn:hover { border-color:var(--accent); transform:scale(1.06); box-shadow:var(--glow); }
+.thumb-btn:hover::after { opacity:1; }
+.thumb-btn.active { border-color:var(--accent); box-shadow:var(--glow); }
+.thumb-btn.is-gif .thumb-label::after { content:' GIF'; color:var(--accent2); }
+
+.thumb-preview {
+  width:100%; height:100%;
+  object-fit:cover; display:block;
+  transition:transform .3s ease;
+}
+.thumb-btn:hover .thumb-preview { transform:scale(1.1); }
+
+.thumb-label {
+  position:absolute; bottom:0; left:0; right:0;
+  font-size:7px; letter-spacing:.1em; color:#fff;
+  background:linear-gradient(transparent, rgba(0,0,0,.85));
+  padding:10px 4px 3px; text-align:center; text-transform:uppercase;
+}
+
+/* ── URL Editor ── */
+.url-editor-wrap { padding:0 12px 4px; }
+.url-editor {
+  width:100%; background:#0a0a0f;
+  border:1px solid var(--border); border-radius:var(--radius);
+  color:var(--text); font-family:'Courier New',monospace;
+  font-size:9px; padding:6px 8px; outline:none;
+  transition:border-color .2s, box-shadow .2s;
+}
+.url-editor:focus { border-color:var(--accent3); box-shadow:0 0 10px rgba(123,47,255,.3); }
+.url-editor::placeholder { color:var(--text-dim); }
+
+.url-apply-btn {
+  width:100%; margin-top:5px;
+  background:transparent; border:1px solid var(--border);
+  border-radius:var(--radius); color:var(--text-dim);
+  font-family:'Courier New',monospace; font-size:8px;
+  letter-spacing:.15em; text-transform:uppercase;
+  padding:5px; cursor:pointer; transition:all .2s;
+}
+.url-apply-btn:hover { border-color:var(--accent3); color:var(--accent3); box-shadow:0 0 10px rgba(123,47,255,.25); }
+
+/* ── Upload ── */
+.upload-zone {
+  margin:0 12px 10px;
+  border:1px dashed var(--border); border-radius:var(--radius);
+  padding:12px 8px; text-align:center; cursor:pointer;
+  transition:border-color .2s, background .2s, box-shadow .2s;
+  font-size:9px; letter-spacing:.12em; color:var(--text-dim);
+  text-transform:uppercase; position:relative; overflow:hidden;
+}
+.upload-zone::before {
+  content:''; position:absolute;
+  top:-100%; left:0; right:0; height:100%;
+  background:linear-gradient(transparent, rgba(255,0,110,.06), transparent);
+  transition:top .4s ease;
+}
+.upload-zone:hover::before { top:100%; }
+.upload-zone:hover {
+  border-color:var(--accent2); background:rgba(255,0,110,.03);
+  color:var(--accent2); box-shadow:var(--glow2);
+}
+.upload-icon { font-size:20px; display:block; margin-bottom:4px; transition:transform .2s; }
+.upload-zone:hover .upload-icon { transform:translateY(-3px); }
+#fileInput { display:none; }
+
+/* ── Fullscreen btn ── */
+.fs-btn {
+  margin:0 12px 18px; background:transparent;
+  border:1px solid var(--border); color:var(--text-dim);
+  font-family:'Courier New',monospace; font-size:8px;
+  letter-spacing:.2em; text-transform:uppercase;
+  padding:8px; cursor:pointer; width:calc(100% - 24px);
+  border-radius:var(--radius); transition:all .2s;
+  position:relative; overflow:hidden;
+}
+.fs-btn::after {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(90deg, transparent, rgba(0,255,231,.06), transparent);
+  transform:translateX(-100%); transition:transform .4s;
+}
+.fs-btn:hover::after { transform:translateX(100%); }
+.fs-btn:hover { border-color:var(--accent); color:var(--accent); box-shadow:var(--glow); }
+
+/* ════════════════════════════════════════════════════════
+   MAIN
+════════════════════════════════════════════════════════ */
+#main {
+  flex:1; display:flex;
+  align-items:center; justify-content:center;
+  position:relative; overflow:hidden;
+}
+/* CRT scanlines */
+#main::before {
+  content:''; position:absolute; inset:0;
+  background:repeating-linear-gradient(
+    0deg, transparent, transparent 3px,
+    rgba(0,255,231,.012) 3px, rgba(0,255,231,.012) 4px
+  );
+  pointer-events:none; z-index:0;
+}
+/* Vignette */
+#main::after {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.7) 100%);
+  pointer-events:none; z-index:0;
+}
+
+/* ════════════════════════════════════════════════════════
+   HOLO SQUARE
+════════════════════════════════════════════════════════ */
+#holo-wrap { position:relative; z-index:1; }
+
+/* Outer glow ring */
+#holo-wrap::before {
+  content:''; position:absolute; inset:-8px;
+  border-radius:4px; background:transparent;
+  box-shadow:0 0 20px 2px rgba(0,255,231,.08), 0 0 60px 10px rgba(0,255,231,.04);
+  animation:ringPulse 4s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes ringPulse {
+  0%,100% { opacity:.5; }
+  50%     { opacity:1;  }
+}
+
+#holo-square {
+  position:relative; background:#000;
+  animation:squareReveal .7s cubic-bezier(.22,1,.36,1) .3s both;
+}
+@keyframes squareReveal {
+  from { opacity:0; transform:scale(.92); }
+  to   { opacity:1; transform:scale(1); }
+}
+
+.holo-view {
+  position:absolute; display:flex;
+  align-items:center; justify-content:center; overflow:hidden;
+}
+.holo-view img {
+  width:100%; height:100%;
+  object-fit:contain; display:block;
+}
+
+/* Image swap flash */
+.holo-view img.fading {
+  animation:imgSwap .35s ease;
+}
+@keyframes imgSwap {
+  0%   { opacity:0; filter:brightness(2) blur(4px); }
+  100% { opacity:1; filter:brightness(1) blur(0); }
+}
+
+/* Center dead zone */
+#holo-center { position:absolute; background:#000; z-index:5; }
+#holo-center::before, #holo-center::after {
+  content:''; position:absolute; background:rgba(0,255,231,.1);
+}
+#holo-center::before { left:50%; top:0; bottom:0; width:1px; transform:translateX(-50%); }
+#holo-center::after  { top:50%; left:0; right:0; height:1px; transform:translateY(-50%); }
+
+/* Corner marks */
+.corner-mark {
+  position:absolute; width:14px; height:14px;
+  border-color:var(--accent); border-style:solid;
+  opacity:0; z-index:10;
+  animation:cornerFadeIn .6s ease .8s forwards;
+}
+@keyframes cornerFadeIn {
+  from { opacity:0; transform:scale(1.5); }
+  to   { opacity:.35; transform:scale(1); }
+}
+.corner-mark.tl { top:0; left:0;   border-width:1px 0 0 1px; }
+.corner-mark.tr { top:0; right:0;  border-width:1px 1px 0 0; }
+.corner-mark.bl { bottom:0; left:0;  border-width:0 0 1px 1px; }
+.corner-mark.br { bottom:0; right:0; border-width:0 1px 1px 0; }
+
+/* ════════════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════════════ */
+#toast {
+  position:fixed; bottom:24px; left:50%;
+  transform:translateX(-50%) translateY(60px);
+  background:rgba(0,0,0,.92); border:1px solid var(--border);
+  border-radius:var(--radius); color:var(--accent);
+  font-size:10px; letter-spacing:.15em; text-transform:uppercase;
+  padding:8px 20px; z-index:999;
+  transition:transform .3s cubic-bezier(.22,1,.36,1), opacity .3s;
+  opacity:0; white-space:nowrap;
+}
+#toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+
+/* ════════════════════════════════════════════════════════
+   BOTTOM BAR (mobile)
+════════════════════════════════════════════════════════ */
+#bottombar {
+  display:none; position:fixed; bottom:0; left:0; right:0;
+  height:var(--ctrl-h); background:rgba(6,6,8,.96);
+  border-top:1px solid var(--border); z-index:20;
+  align-items:center; gap:8px; padding:0 12px;
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+  backdrop-filter:blur(10px);
+}
+#bottombar::-webkit-scrollbar { display:none; }
+
+.bb-thumb {
+  min-width:62px; height:62px;
+  border:1px solid var(--border); background:#0a0a0f;
+  border-radius:var(--radius); cursor:pointer;
+  overflow:hidden; flex-shrink:0; transition:border-color .2s;
+}
+.bb-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.bb-thumb.active { border-color:var(--accent); box-shadow:var(--glow); }
+.bb-sep { min-width:1px; height:44px; background:var(--border); flex-shrink:0; }
+.bb-upload {
+  min-width:62px; height:62px; border:1px dashed var(--border);
+  background:transparent; border-radius:var(--radius); cursor:pointer;
+  flex-shrink:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  font-size:8px; letter-spacing:.1em; color:var(--text-dim);
+  text-transform:uppercase; gap:3px; transition:border-color .2s, color .2s;
+}
+.bb-upload:hover { border-color:var(--accent2); color:var(--accent2); }
+.bb-fs {
+  min-width:46px; height:46px; border:1px solid var(--border);
+  background:transparent; border-radius:var(--radius); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; color:var(--text-dim); flex-shrink:0; margin-left:auto;
+  transition:border-color .2s, color .2s;
+}
+.bb-fs:hover { border-color:var(--accent); color:var(--accent); }
+
+/* ════════════════════════════════════════════════════════
+   FULLSCREEN
+════════════════════════════════════════════════════════ */
+body.fullscreen #sidebar   { display:none !important; }
+body.fullscreen #bottombar { display:none !important; }
+
+/* ════════════════════════════════════════════════════════
+   RESPONSIVE
+════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  #sidebar   { display:none; }
+  #bottombar { display:flex; }
+  #main { margin-bottom:var(--ctrl-h); height:calc(100vh - var(--ctrl-h)); }
+  #app  { flex-direction:column; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ══════════ SIDEBAR ══════════ -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h1>ProyectoAlis</h1>
+      <p>Pepper's Ghost Projector</p>
+    </div>
+
+    <div class="section-title">Imágenes de prueba</div>
+    <div class="thumb-grid" id="thumbGrid"></div>
+
+    <div class="section-title">Cambiar URL</div>
+    <div class="url-editor-wrap">
+      <input
+        type="text"
+        id="urlEditor"
+        class="url-editor"
+        placeholder="https://... (.jpg .png .gif .webp)"
+        title="Pega una URL de imagen o GIF y presiona Aplicar"
+      />
+      <button class="url-apply-btn" id="urlApplyBtn">⟶ Aplicar URL</button>
+    </div>
+
+    <div class="section-title">Subir archivo</div>
+    <label class="upload-zone" for="fileInput">
+      <span class="upload-icon">⬆</span>
+      Subir imagen / GIF
+    </label>
+    <input type="file" id="fileInput" accept="image/*,image/gif,image/webp">
+
+    <div class="section-title">Pantalla</div>
+    <button class="fs-btn" id="fsBtn">[ ] Modo Proyección</button>
+  </aside>
+
+  <!-- ══════════ MAIN ══════════ -->
+  <main id="main">
+    <div id="holo-wrap">
+      <div id="holo-square">
+        <div class="corner-mark tl"></div>
+        <div class="corner-mark tr"></div>
+        <div class="corner-mark bl"></div>
+        <div class="corner-mark br"></div>
+        <div id="holo-center"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ══════════ BOTTOM BAR (mobile) ══════════ -->
+  <nav id="bottombar">
+    <div id="bbThumbs" style="display:flex;gap:8px;align-items:center;flex-shrink:0;"></div>
+    <div class="bb-sep"></div>
+    <label class="bb-upload" for="fileInput">
+      <span style="font-size:18px;">⬆</span>Subir
+    </label>
+    <button class="bb-fs" id="fsBtnMobile" title="Pantalla completa">⛶</button>
+  </nav>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════
+   ╔══════════════════════════════════════════════════╗
+   ║   CONFIGURA TUS IMÁGENES POR DEFECTO AQUÍ        ║
+   ║                                                  ║
+   ║   Cambia 'src' por la URL de tu imagen o GIF.    ║
+   ║   Puedes poner URLs de internet o rutas locales. ║
+   ║   Soporta: .jpg .png .gif .webp y más.           ║
+   ╚══════════════════════════════════════════════════╝
+════════════════════════════════════════════════════════ */
+const PRESETS = [
+  {
+    label: 'PEPSI',
+    src: 'https://media.tenor.com/FYuF1j4MsmIAAAAi/pepsi-drink.gif'
+    // ← Reemplaza esta URL con tu propia imagen o GIF
+  },
+  {
+    label: 'HAMBURGUESA',
+    src: 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExNW83Y2h2d2h4OTJtaTJpdm43d3BkM2Z0Y29zaDZ2bzQ4OHh4M2tlayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/kwhKiIH81aOOZJqvHA/giphy.gif'
+    // ← Reemplaza esta URL con tu propia imagen o GIF
+  },
+  {
+    label: 'MACDONALDS',
+    src: 'https://media1.tenor.com/m/fN-H42hA_0MAAAAC/mcdonalds-fast-food.gif'
+    // ← Reemplaza esta URL con tu propia imagen o GIF
+  },
+  {
+    label: 'GALAXIA',
+    src: 'https://media.tenor.com/adfuekrDPS0AAAAi/alien-pls.gif'
+    // ← Reemplaza esta URL con tu propia imagen o GIF
+  },
+  {
+    label: 'KREAM',
+    src: 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExcjcwZTlsMDc5cXNqcWdvcTg4NmNlbHo1ZDdyYTFoeXNvanFsNTFkaCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/xgNebGdlSzkpdnBSjW/giphy.gif'
+  },
+   
+  {
+    label: 'AMONGUS',
+    src: 'https://media.tenor.com/DYYUoqO0GJ0AAAAi/among-us-walking.gif'
+
+  },
+   
+  {
+    label: 'COCACOLA',
+    src: 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGMwNmN0NGtyOHBsZW4yNjd1MTZrdGNyN2U0eGR0aTJwNzN0cGp2ZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/ATpeiHNW6HTnAQW1Zf/giphy.gif'
+
+  },
+   
+  {
+    label: 'BOMBOMBUM',
+    src: 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExbTNrdm9wN3Z4a2NzOWNtaGhlMzk2aGFqdnJobXhlbHhxMTZ5MWRraCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/c5hIzIp5DmkCae14gz/giphy.gif'
+
+  },
+   
+  {
+    label: 'BOLIVIA',
+    src: 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExc2M1bTNjeWx6eDc4Z3hqdmFjOWxjYzMweGg4MTR3NzhxczZ1bW14ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/HF1U1w906FtH3t8ZoH/giphy.gif'
+
+  },
+   
+  {
+    label: 'BOLIVIA',
+    src: 'https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExZHV1N2NqdGV5cHJmNHpyeXVlejBzeW9mYjQ1bWZxbDh6ZWt6Z3U1MSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/gGgonU5pSSOSCmqn8x/giphy.gif'
+
+  },
+   
+  {
+    label: 'CERVEZAS',
+    src: 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExbTcyZHJ0NnlpaWFwdDdhczhuNTh4dHg5aWR0YzdxdXdpd2U4bDFhYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/C8V887bAskA5Nb0dxA/giphy.gif'
+
+  }
+];
+/* ════════════════════════════════════════════════════════
+   FIN DE CONFIGURACIÓN — no modificar lo de abajo
+════════════════════════════════════════════════════════ */
+
+
+/* ── State ── */
+let currentSrc   = PRESETS[0].src;
+let currentIndex = 0;
+
+/* ════════════ TOAST ════════════ */
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+/* ════════════ SIZING ════════════ */
+function getSize() {
+  const isMobile = window.innerWidth <= 768;
+  const W = isMobile ? window.innerWidth : window.innerWidth - 230;
+  const H = isMobile ? (window.innerHeight - 96) : window.innerHeight;
+  return Math.floor(Math.min(W, H) * (isMobile ? 0.96 : 0.90));
+}
+
+function layout() {
+  const S       = getSize();
+  const half    = S / 2;
+  const imgSize = Math.floor(half * 0.88);
+  const ctrSize = Math.floor(S * 0.16);
+
+  const sq = document.getElementById('holo-square');
+  sq.style.width  = S + 'px';
+  sq.style.height = S + 'px';
+
+  const ctr = document.getElementById('holo-center');
+  ctr.style.width  = ctrSize + 'px';
+  ctr.style.height = ctrSize + 'px';
+  ctr.style.left   = (half - ctrSize / 2) + 'px';
+  ctr.style.top    = (half - ctrSize / 2) + 'px';
+
+  setView('view-top',    imgSize,   0, half - imgSize / 2,           half - ctrSize / 2 - imgSize);
+  setView('view-bottom', imgSize, 180, half - imgSize / 2,           half + ctrSize / 2);
+  setView('view-left',   imgSize, -90, half - ctrSize / 2 - imgSize, half - imgSize / 2);
+  setView('view-right',  imgSize,  90, half + ctrSize / 2,           half - imgSize / 2);
+}
+
+function setView(id, size, rotation, left, top) {
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.className = 'holo-view';
+    const img = document.createElement('img');
+    img.alt = '';
+    el.appendChild(img);
+    document.getElementById('holo-square').appendChild(el);
+  }
+  el.style.width     = size + 'px';
+  el.style.height    = size + 'px';
+  el.style.left      = left + 'px';
+  el.style.top       = top  + 'px';
+  el.style.transform = `rotate(${rotation}deg)`;
+  const img = el.querySelector('img');
+  if (img.src !== currentSrc) {
+    img.classList.remove('fading');
+    void img.offsetWidth;
+    img.src = currentSrc;
+    img.classList.add('fading');
+  }
+}
+
+/* ════════════ UPDATE VIEWS ════════════ */
+function updateViews() {
+  ['view-top','view-bottom','view-left','view-right'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const img = el.querySelector('img');
+    img.classList.remove('fading');
+    void img.offsetWidth;
+    img.src = currentSrc;
+    img.classList.add('fading');
+  });
+}
+
+/* ════════════ BUILD THUMBNAILS ════════════ */
+function buildThumbs() {
+  const thumbGrid = document.getElementById('thumbGrid');
+  thumbGrid.innerHTML = '';
+  const bbThumbs = document.getElementById('bbThumbs');
+  bbThumbs.innerHTML = '';
+
+  PRESETS.forEach((p, i) => {
+    const isGif = /\.gif(\?|$)/i.test(p.src) || p.src.includes('giphy');
+
+    // Sidebar
+    const btn = document.createElement('button');
+    btn.className = 'thumb-btn' + (i === 0 ? ' active' : '') + (isGif ? ' is-gif' : '');
+    btn.title = p.label;
+
+    const preview = document.createElement('img');
+    preview.className = 'thumb-preview';
+    preview.src = p.src;
+    preview.alt = p.label;
+    btn.appendChild(preview);
+
+    const lbl = document.createElement('div');
+    lbl.className = 'thumb-label';
+    lbl.textContent = p.label;
+    btn.appendChild(lbl);
+
+    btn.addEventListener('click', () => selectPreset(i));
+    thumbGrid.appendChild(btn);
+
+    // Mobile bar
+    const bb = document.createElement('div');
+    bb.className = 'bb-thumb' + (i === 0 ? ' active' : '');
+    const bbImg = document.createElement('img');
+    bbImg.src = p.src;
+    bbImg.alt = p.label;
+    bb.appendChild(bbImg);
+    bb.addEventListener('click', () => selectPreset(i));
+    bbThumbs.appendChild(bb);
+  });
+}
+
+function selectPreset(i) {
+  currentIndex = i;
+  currentSrc   = PRESETS[i].src;
+  updateViews();
+  document.querySelectorAll('.thumb-btn').forEach((b, idx) => b.classList.toggle('active', idx === i));
+  document.querySelectorAll('.bb-thumb') .forEach((b, idx) => b.classList.toggle('active', idx === i));
+  document.getElementById('urlEditor').value = PRESETS[i].src;
+  const isGif = /\.gif(\?|$)/i.test(PRESETS[i].src) || PRESETS[i].src.includes('giphy');
+  showToast(isGif ? `GIF cargado: ${PRESETS[i].label}` : `IMAGEN: ${PRESETS[i].label}`);
+}
+
+/* ════════════ URL APPLY ════════════ */
+function applyUrl() {
+  const val = document.getElementById('urlEditor').value.trim();
+  if (!val) return;
+  currentSrc   = val;
+  currentIndex = -1;
+  document.querySelectorAll('.thumb-btn, .bb-thumb').forEach(b => b.classList.remove('active'));
+  updateViews();
+  const isGif = /\.gif(\?|$)/i.test(val) || val.includes('giphy');
+  showToast(isGif ? 'GIF cargado desde URL' : 'Imagen cargada desde URL');
+}
+document.getElementById('urlApplyBtn').addEventListener('click', applyUrl);
+document.getElementById('urlEditor').addEventListener('keydown', e => { if (e.key === 'Enter') applyUrl(); });
+
+/* ════════════ FILE UPLOAD ════════════ */
+document.getElementById('fileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  currentSrc   = URL.createObjectURL(file);
+  currentIndex = -1;
+  document.querySelectorAll('.thumb-btn, .bb-thumb').forEach(b => b.classList.remove('active'));
+  updateViews();
+  document.getElementById('urlEditor').value = '';
+  showToast(file.type === 'image/gif' ? `GIF: ${file.name}` : `ARCHIVO: ${file.name}`);
+  e.target.value = '';
+});
+
+/* ════════════ FULLSCREEN ════════════ */
+function toggleFS() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+    document.body.classList.add('fullscreen');
+    showToast('Doble clic para salir');
+  } else {
+    document.exitFullscreen().catch(() => {});
+    document.body.classList.remove('fullscreen');
+  }
+}
+document.getElementById('fsBtn').addEventListener('click', toggleFS);
+document.getElementById('fsBtnMobile').addEventListener('click', toggleFS);
+document.addEventListener('dblclick', () => {
+  if (document.body.classList.contains('fullscreen')) {
+    document.body.classList.remove('fullscreen');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) document.body.classList.remove('fullscreen');
+});
+
+/* ════════════ INIT ════════════ */
+buildThumbs();
+layout();
+document.getElementById('urlEditor').value = PRESETS[0].src;
+window.addEventListener('resize', layout);
+</script>
+</body>
+</html>
